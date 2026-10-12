@@ -8,3 +8,5 @@ data/
 *.log
 parse_*.json
 verify_*.json
+.venv/
+.pytest_cache/

@@ -20,6 +20,7 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"],
 def health():
     vlm = llm_mod.pick_vision_model()
     return {"status": "ok", "llm": settings.ollama_model, "vlm": vlm or "none",
+            "db": "postgres:up" if store.ping() else "postgres:down (check DATABASE_URL in backend/.env)",
             "pipeline": "pymupdf -> " + ("vlm+llm" if vlm else "llm (vlm on scanned pages if installed)")}
 
 
@@ -67,24 +68,37 @@ async def verify_claim(files: List[UploadFile] = File(...), claim_id: str = ""):
     totals = {d.filename: {"stated": d.total_amount,
                            "recalculated": recalc_invoice(d) if d.document_type == "invoice" else None}
               for d in parsed.documents}
-    aid = store.save_verification(cid, status,
-                                  json.dumps([f.model_dump() for f in findings]),
-                                  json.dumps([d.model_dump() for d in parsed.documents]))
+    aid = _save_verification(cid, status,
+                               json.dumps([f.model_dump() for f in findings]),
+                               json.dumps([d.model_dump() for d in parsed.documents]))
     return VerificationReport(claim_id=cid, status=status, findings=findings,
                               documents=parsed.documents,
                               totals_recalculated=totals, audit_id=aid)
 
 
+def _save_verification(cid: str, status: str, findings_json: str, docs_json: str) -> int:
+    try:
+        return store.save_verification(cid, status, findings_json, docs_json)
+    except Exception as e:
+        raise HTTPException(503, f"Database unavailable (check DATABASE_URL): {e}")
+
+
 @app.post("/api/review")
 def review(inp: ReviewInput):
-    rid = store.save_review(inp.audit_id, inp.finding_code, inp.decision,
-                            inp.comment, inp.reviewer)
+    try:
+        rid = store.save_review(inp.audit_id, inp.finding_code, inp.decision,
+                                inp.comment, inp.reviewer)
+    except Exception as e:
+        raise HTTPException(503, f"Database unavailable (check DATABASE_URL): {e}")
     return {"review_id": rid, "status": "recorded"}
 
 
 @app.get("/api/audits")
 def audits(limit: int = 50):
-    return store.list_verifications(limit)
+    try:
+        return store.list_verifications(limit)
+    except Exception as e:
+        raise HTTPException(503, f"Database unavailable (check DATABASE_URL): {e}")
 
 
 @app.post("/api/explain")

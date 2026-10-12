@@ -1,19 +1,12 @@
-<<<<<<< HEAD
-"# Insurance-Claim-Verification-Agent" 
-<<<<<<< HEAD
-upsc and who? xp
-=======
->>>>>>> 931d3b0 (first commit)
-=======
 # ClaimLens AI — Insurance Claim Verification Agent
 
-`React (Vite) → FastAPI → PyMuPDF / local Ollama LLM → Python verification rules → SQLite → React report`
+`React (Vite) → FastAPI → PyMuPDF / local Ollama LLM → Python verification rules → PostgreSQL (Supabase) → React report`
 
 ## Parsing API (local Ollama, your request)
 - `POST /api/parse` — upload 1..N PDFs → structured JSON per document: claim details,
   invoice numbers, itemized charges, totals, hospitalization dates, policy validity,
-  coverage limits, exclusions, required documents. Model: `llama3.2:3b` (local, 2 GB).
-- `POST /api/verify` — parse + deterministic verification + SQLite audit row.
+  coverage limits, exclusions, required documents. Model: `granite3-moe:3b` (local, ~2 GB).
+- `POST /api/verify` — parse + deterministic verification + PostgreSQL audit row.
 - `POST /api/review` — human-in-the-loop confirm / dismiss / inconclusive + comment.
 - `GET /api/audits` — audit trail. `POST /api/explain` — explains a quoted clause only.
 
@@ -31,9 +24,9 @@ Default = **PyMuPDF text → local text LLM → validated JSON**.
 ollama serve                                   # local daemon
 cd backend
 pip install -r requirements.txt
-copy .env.example .env                         # OLLAMA_MODEL=llama3.2:3b
+copy .env.example .env                         # OLLAMA_MODEL=granite3-moe:3b
 $env:OLLAMA_HOST='http://127.0.0.1:11434'      # if your env has 0.0.0.0, use 127.0.0.1
-python -m uvicorn app.main:app --port 8002 --app-dir backend
+python -m uvicorn app.main:app --port 8002
 cd ..\frontend; npm install; npm run dev       # http://localhost:5173 (proxies /api → :8002)
 ```
 
@@ -57,4 +50,3 @@ The tool never auto-approves/rejects or labels fraud — worst status is
 - Verification is deterministic Python (totals, duplicates, dates, coverage, claim-ID
   consistency); the LLM only extracts and quotes clauses.
 - Scanned PDFs need a local VLM or they degrade to regex-fallback with a warning.
->>>>>>> 652dc1e (ClaimLens AI: local Ollama parse API (PyMuPDF+LLM JSON), deterministic verifier, HITL review, SQLite audit, React dashboard, 3 demo scenarios)
