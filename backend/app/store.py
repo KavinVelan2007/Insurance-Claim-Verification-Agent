@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from cryptography.fernet import Fernet, InvalidToken
+from psycopg import sql
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from psycopg_pool import ConnectionPool
@@ -30,10 +31,16 @@ def _dsn() -> str:
     return url
 
 
+def _configure(con) -> None:
+    # Every connection works inside the Kaagaz schema (created by init()).
+    con.execute(sql.SQL("SET search_path TO {}").format(sql.Identifier(settings.db_schema)))
+    con.commit()
+
+
 def pool() -> ConnectionPool:
     global _pool
     if _pool is None:
-        _pool = ConnectionPool(_dsn(), min_size=1, max_size=8, open=True, timeout=10,
+        _pool = ConnectionPool(_dsn(), min_size=1, max_size=8, open=True, timeout=10, configure=_configure,
                                kwargs={"row_factory": dict_row, "connect_timeout": 5,
                                        "prepare_threshold": None})
     return _pool
@@ -44,6 +51,7 @@ def init() -> None:
     with pool().connection() as con:
         con.execute("SELECT pg_advisory_lock(424242)")
         try:
+            con.execute(sql.SQL("CREATE SCHEMA IF NOT EXISTS {}").format(sql.Identifier(settings.db_schema)))
             con.execute((Path(__file__).with_name("schema.sql")).read_text(encoding="utf-8"))
         finally:
             con.execute("SELECT pg_advisory_unlock(424242)")

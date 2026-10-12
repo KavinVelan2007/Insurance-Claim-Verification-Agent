@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     max_files: int = 20
     # Storage / security
     database_url: str = ""
+    db_schema: str = "kaagaz"       # own Postgres schema, so a shared database's other tables are untouched
     secret_key: str = ""            # signs session cookies
     file_encryption_key: str = ""   # Fernet key; encrypts stored PDFs
     cors_origins: str = "http://localhost:5173"
