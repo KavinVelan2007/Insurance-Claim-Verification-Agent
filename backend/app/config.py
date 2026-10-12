@@ -1,31 +1,30 @@
-"""ClaimLens AI — central settings (server-side keys, no secrets in frontend)."""
-import os
-from pydantic_settings import BaseSettings
-
-
-def _default_host() -> str:
-    # OLLAMA_HOST=0.0.0.0 means "listen on all interfaces" for the server,
-    # but it is NOT a valid connect address for the client.
-    h = os.environ.get("OLLAMA_HOST", "http://localhost:11434").strip()
-    if h.startswith("0.0.0.0"):
-        h = h.replace("0.0.0.0", "127.0.0.1")
-    if "://" not in h:
-        h = "http://" + h
-    return h
+"""Kaagaz — settings, read from backend/.env. Secrets stay server-side."""
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    app_name: str = "ClaimLens AI"
-    ollama_host: str = _default_host()
-    ollama_model: str = "llama3.2:3b"  # local text LLM (fast, low RAM)
-    ollama_vlm_model: str = ""  # e.g. moondream / llava — auto-detected if blank
-    ollama_timeout_s: int = 120
-    max_upload_mb: int = 15
-    database_url: str = ""  # e.g. postgresql://postgres:PASSWORD@db.xxx.supabase.co:5432/postgres?sslmode=require
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    class Config:
-        env_file = ".env"
-        env_prefix = ""
+    app_name: str = "Kaagaz"
+    # Pipeline: PyMuPDF text layer + scanned-page images -> vision LLM -> schema-validated JSON
+    llm_base_url: str = "https://openrouter.ai/api/v1"   # any OpenAI-compatible API (Ollama: http://localhost:11434/v1)
+    openrouter_api_key: str = ""
+    llm_model: str = "google/gemini-2.5-flash"           # must accept images + json_schema output
+    llm_reasoning: str = "low"                           # reasoning effort; "" for non-reasoning models
+    llm_timeout_s: int = 180
+    max_image_pages: int = 10                            # scanned pages sent per document (cost cap)
+    # Uploads
+    max_upload_mb: int = 15
+    max_files: int = 20
+    # Storage / security
+    database_url: str = ""
+    secret_key: str = ""            # signs session cookies
+    file_encryption_key: str = ""   # Fernet key; encrypts stored PDFs
+    cors_origins: str = "http://localhost:5173"
+    cookie_secure: bool = False     # True in production (HTTPS)
+    session_hours: int = 12
+    retention_days: int = 90        # stored PDFs are purged after this; reports are kept
+    worker_enabled: bool = True     # run the job worker inside the API process
 
 
 settings = Settings()

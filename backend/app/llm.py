@@ -1,119 +1,117 @@
-"""Ollama client — local text LLM + optional local VLM, JSON-validated.
+"""LLM calls over the OpenAI-compatible chat API (OpenRouter by default).
 
-Accuracy/speed decision:
-- OCR+VLM is NOT the default: without tesseract installed and no vision
-  model pulled, it would only add latency. Default pipeline is
-  PyMuPDF text -> local text LLM (llama3.2:3b) -> validated JSON.
-- VLM path activates ONLY when (a) scanned pages exist AND (b) a local
-  vision model (moondream/llava/bakllava/qwen2-vl/llama3.2-vision/minicpm-v)
-  is found via `ollama list`. Otherwise we return a graceful failure flag.
+One vision-capable model reads each document: the PDF's text layer plus images
+of any scanned pages go in, schema-validated JSON comes out. The model only
+extracts; verifier.py decides. Point LLM_BASE_URL at http://localhost:11434/v1
+to run the same calls on a local Ollama model instead.
 """
+import base64
 import json
-import re
-from typing import Optional, Dict, Any, List
+import time
+from typing import Any, Dict, List
 
-import ollama
+import httpx
 
 from .config import settings
+from .models import Extraction
 
-EXTRACTION_SCHEMA_HINT = """Return ONLY valid JSON (no markdown, no commentary) with keys:
-{"document_type": "policy|invoice|discharge_summary|prescription|diagnostic_report|claim_form|other",
-"claim_id": string|null, "patient_name": string|null, "hospital_name": string|null,
-"invoice_number": string|null, "invoice_date": "YYYY-MM-DD"|null,
-"itemized_charges": [{"description": string, "amount": number}],
-"total_amount": number|null, "currency": "INR",
-"admission_date": "YYYY-MM-DD"|null, "discharge_date": "YYYY-MM-DD"|null,
-"diagnosis": string|null, "policy_number": string|null,
-"policy_valid_from": "YYYY-MM-DD"|null, "policy_valid_to": "YYYY-MM-DD"|null,
-"coverage_limit": number|null, "deductible": number,
-"exclusions": [string], "required_documents": [string],
-"policy_clauses": [string], "confidence": 0.0-1.0}
-Rules: use null when unknown (never invent numbers/dates); copy itemized amounts exactly;
-normalize dates to YYYY-MM-DD; confidence < 0.5 when text is garbled.
-For policy documents: itemized_charges MUST be [], admission/discharge/invoice dates MUST be null
-(dates in a policy are validity dates, not treatment dates); invoice_number MUST be null.
-For non-invoice documents (discharge_summary, prescription, diagnostic_report, claim_form, policy):
-itemized_charges MUST be [] and total_amount MUST be null — only invoices have charges/totals.
-For claim forms: capture claim_id, patient_name, hospital_name, admission/discharge dates if present."""
+PROMPT = """You extract fields from one health-insurance claim document. Rules:
+- Use null when a value is not in the document. Never invent numbers, names or dates.
+- Copy itemized charge descriptions and amounts exactly as printed; amounts are plain numbers.
+- Dates as YYYY-MM-DD when unambiguous (Indian documents are day-first), otherwise copy them as printed.
+- Only invoices have itemized_charges and total_amount; for every other type use [] and null.
+- Policy documents: fill policy_number, validity dates, coverage_limit, deductible, exclusions,
+  required_documents (document names only) and policy_clauses (verbatim clause text). Their
+  admission/discharge/invoice dates and invoice_number are null.
+- Scanned pages are attached as images; read them as carefully as the text.
+- confidence: 0.9 when everything is clearly legible, below 0.5 if parts are illegible or cut off.
 
-VLM_OCR_PROMPT = (
-    "Transcribe this document page EXACTLY. Return only the visible text, "
-    "preserving line breaks and numbers. Do not summarize or invent anything."
-)
-
-VISION_MODEL_KEYWORDS = (
-    "moondream", "llava", "bakllava", "qwen2-vl", "qwen2.5vl", "qwen2.5-vl",
-    "llama3.2-vision", "minicpm-v", " granite-vision",
-)
+FILE: {filename}
+TEXT LAYER:
+{text}"""
 
 
-def _client() -> ollama.Client:
-    return ollama.Client(host=settings.ollama_host, timeout=settings.ollama_timeout_s)
+def _strict(schema: Dict[str, Any]) -> Dict[str, Any]:
+    """OpenAI-style strict schemas need additionalProperties=false and every key required."""
+    def walk(node):
+        if isinstance(node, dict):
+            if node.get("type") == "object" and "properties" in node:
+                node["additionalProperties"] = False
+                node["required"] = list(node["properties"])
+            for v in node.values():
+                walk(v)
+        elif isinstance(node, list):
+            for v in node:
+                walk(v)
+    walk(schema)
+    return schema
 
 
-def pick_vision_model() -> Optional[str]:
-    """Return configured or auto-detected local vision model, else None."""
-    if settings.ollama_vlm_model.strip():
-        return settings.ollama_vlm_model.strip()
-    try:
-        models = _client().list().get("models", [])
-        names = [m.get("name", "") or m.get("model", "") for m in models]
-    except Exception:
-        return None
-    for n in names:
-        low = n.lower()
-        if any(k.strip() in low for k in VISION_MODEL_KEYWORDS if k.strip()):
-            return n
-    return None
+SCHEMA = _strict(Extraction.model_json_schema())
 
 
-def vlm_ocr_page(image_b64: str, model: str) -> str:
-    import base64
-    img = base64.b64decode(image_b64)
-    resp = _client().generate(model=model, prompt=VLM_OCR_PROMPT, images=[img])
-    return (resp.get("response") or "").strip()
+class LLMError(RuntimeError):
+    pass
 
 
-def llm_extract(document_text: str, filename: str = "") -> Dict[str, Any]:
-    """Text -> structured JSON via local Ollama text model. Never raises on bad JSON."""
-    client = _client()
-    prompt = (
-        "You are a health-insurance document parser. Extract the fields precisely.\n"
-        + EXTRACTION_SCHEMA_HINT
-        + f"\n\nSOURCE FILE: {filename}\nDOCUMENT TEXT (may be truncated):\n{document_text[:12000]}"
-    )
-    resp = client.generate(
-        model=settings.ollama_model,
-        prompt=prompt,
-        format="json",
-        options={"temperature": 0},
-    )
-    raw = (resp.get("response") or "").strip()
+def _chat(messages: List[dict], **extra) -> str:
+    if not configured():
+        raise LLMError("OPENROUTER_API_KEY is not set in backend/.env")
+    body = {"model": settings.llm_model, "messages": messages, "temperature": 0,
+            # Only route to providers that don't collect prompt data (health records).
+            "provider": {"data_collection": "deny", "require_parameters": True}, **extra}
+    if settings.llm_reasoning:  # reasoning models spend output tokens thinking; keep it short
+        body["reasoning"] = {"effort": settings.llm_reasoning, "exclude": True}
+    headers = {"Authorization": f"Bearer {settings.openrouter_api_key}", "X-Title": "Kaagaz"}
+    for attempt in range(3):
+        try:
+            r = httpx.post(f"{settings.llm_base_url.rstrip('/')}/chat/completions", json=body,
+                           headers=headers, timeout=settings.llm_timeout_s)
+        except httpx.TransportError as e:
+            if attempt == 2:
+                raise LLMError(f"LLM service unreachable ({e})") from e
+        else:
+            if r.status_code == 200:
+                data = r.json()
+                if data.get("error"):
+                    raise LLMError(str(data["error"].get("message", data["error"])))
+                choice = data["choices"][0]
+                if choice.get("finish_reason") == "length":
+                    raise LLMError("The model ran out of output tokens; try again or use a model with less reasoning.")
+                return choice["message"]["content"] or ""
+            if r.status_code not in (408, 429, 500, 502, 503, 504) or attempt == 2:
+                try:
+                    msg = r.json()["error"]["message"]
+                except Exception:
+                    msg = r.text[:300]
+                raise LLMError(f"LLM request failed ({r.status_code}): {msg}")
+        time.sleep(3 * (attempt + 1))
+    raise LLMError("LLM request failed")
+
+
+def extract(text: str, images: List[bytes], filename: str) -> Dict[str, Any]:
+    """Document text + scanned-page JPEGs -> dict matching Extraction. Raises LLMError."""
+    content: List[dict] = [{"type": "text", "text": PROMPT.format(filename=filename, text=text[:60000] or "(none)")}]
+    content += [{"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + base64.b64encode(i).decode()}}
+                for i in images]
+    raw = _chat([{"role": "user", "content": content}], max_tokens=12000,
+                response_format={"type": "json_schema",
+                                 "json_schema": {"name": "extraction", "strict": True, "schema": SCHEMA}})
     try:
         data = json.loads(raw)
-        if not isinstance(data, dict):
-            raise ValueError("top-level JSON is not an object")
-        return data
-    except Exception:
-        # Salvage the first {...} block if the model added stray text
-        m = re.search(r"\{.*\}", raw, re.DOTALL)
-        if m:
-            try:
-                data = json.loads(m.group(0))
-                if isinstance(data, dict):
-                    return data
-            except Exception:
-                pass
-        return {"_parse_error": raw[:2000]}
+    except json.JSONDecodeError as e:
+        raise LLMError(f"Model returned invalid JSON for {filename}") from e
+    if not isinstance(data, dict):
+        raise LLMError(f"Model returned non-object JSON for {filename}")
+    return data
 
 
-def llm_explain_clause(clause: str, question: str = "Explain its relevance to this claim.") -> str:
-    resp = _client().generate(
-        model=settings.ollama_model,
-        prompt=(
-            "You are a claim assistant. Explain ONLY the policy clause quoted below. "
-            "Do not invent policy terms.\nCLAUSE: " + clause[:2000] + "\nQUESTION: " + question
-        ),
-        options={"temperature": 0.2},
-    )
-    return (resp.get("response") or "").strip()
+def explain_clause(clause: str) -> str:
+    return _chat([{"role": "user", "content":
+                   "Explain in 2-4 plain sentences what this health-insurance policy clause means for a "
+                   f"claim reviewer. Explain only what the clause says; do not add terms.\nCLAUSE: {clause[:2000]}"}],
+                 max_tokens=2000).strip()
+
+
+def configured() -> bool:
+    return bool(settings.openrouter_api_key) or "openrouter.ai" not in settings.llm_base_url

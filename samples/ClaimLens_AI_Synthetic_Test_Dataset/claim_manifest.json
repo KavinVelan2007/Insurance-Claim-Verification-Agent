@@ -1,0 +1,98 @@
+[
+  {
+    "claim_id": "CLM-1001",
+    "packet_file": "CLM-1001_valid_standard_inpatient.pdf",
+    "ground_truth_label": "PASS_POLICY_CHECKS",
+    "issue_categories": [],
+    "pages": 4,
+    "ocr_required": false
+  },
+  {
+    "claim_id": "CLM-1002",
+    "packet_file": "CLM-1002_valid_cataract_one_eye.pdf",
+    "ground_truth_label": "PASS_POLICY_CHECKS",
+    "issue_categories": [],
+    "pages": 4,
+    "ocr_required": false
+  },
+  {
+    "claim_id": "CLM-1003",
+    "packet_file": "CLM-1003_room_rent_daily_cap_exceeded.pdf",
+    "ground_truth_label": "FLAG_FOR_ADJUSTMENT",
+    "issue_categories": [
+      "ROOM_RENT_DAILY_CAP_EXCEEDED"
+    ],
+    "pages": 3,
+    "ocr_required": false
+  },
+  {
+    "claim_id": "CLM-1004",
+    "packet_file": "CLM-1004_mri_missing_preauthorisation.pdf",
+    "ground_truth_label": "FLAG_FOR_MANUAL_REVIEW",
+    "issue_categories": [
+      "MRI_PREAUTHORISATION_MISSING"
+    ],
+    "pages": 4,
+    "ocr_required": false
+  },
+  {
+    "claim_id": "CLM-1005",
+    "packet_file": "CLM-1005_mri_per_claim_cap_exceeded_scanned.pdf",
+    "ground_truth_label": "FLAG_FOR_ADJUSTMENT",
+    "issue_categories": [
+      "MRI_CT_CLAIM_CAP_EXCEEDED"
+    ],
+    "pages": 4,
+    "ocr_required": true
+  },
+  {
+    "claim_id": "CLM-1006",
+    "packet_file": "CLM-1006_cataract_per_eye_caps_exceeded.pdf",
+    "ground_truth_label": "FLAG_FOR_ADJUSTMENT",
+    "issue_categories": [
+      "CATARACT_PER_EYE_CAP_EXCEEDED"
+    ],
+    "pages": 4,
+    "ocr_required": false
+  },
+  {
+    "claim_id": "CLM-1007",
+    "packet_file": "CLM-1007_non_network_copay_not_applied.pdf",
+    "ground_truth_label": "FLAG_FOR_ADJUSTMENT",
+    "issue_categories": [
+      "NON_NETWORK_COPAY_NOT_DEDUCTED"
+    ],
+    "pages": 3,
+    "ocr_required": false
+  },
+  {
+    "claim_id": "CLM-1008",
+    "packet_file": "CLM-1008_hospitalisation_outside_policy_period.pdf",
+    "ground_truth_label": "FLAG_POLICY_PERIOD_MISMATCH",
+    "issue_categories": [
+      "HOSPITALISATION_OUTSIDE_POLICY_PERIOD"
+    ],
+    "pages": 3,
+    "ocr_required": false
+  },
+  {
+    "claim_id": "CLM-1009",
+    "packet_file": "CLM-1009_duplicate_invoice_double_count_scanned.pdf",
+    "ground_truth_label": "FLAG_AMOUNT_INCONSISTENCY",
+    "issue_categories": [
+      "DUPLICATE_INVOICE_DOUBLE_COUNT"
+    ],
+    "pages": 4,
+    "ocr_required": true
+  },
+  {
+    "claim_id": "CLM-1010",
+    "packet_file": "CLM-1010_missing_discharge_summary_evidence_gap.pdf",
+    "ground_truth_label": "REVIEW_INCOMPLETE_EVIDENCE",
+    "issue_categories": [
+      "MISSING_DISCHARGE_SUMMARY_EVIDENCE_GAP"
+    ],
+    "pages": 3,
+    "ocr_required": false
+  }
+]

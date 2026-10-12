@@ -1,52 +1,68 @@
-# ClaimLens AI — Insurance Claim Verification Agent
+# Kaagaz — health-insurance claim verification
 
-`React (Vite) → FastAPI → PyMuPDF / local Ollama LLM → Python verification rules → PostgreSQL (Supabase) → React report`
+Upload a claim's PDFs (policy, hospital invoices, discharge summary, prescriptions,
+diagnostic reports, claim form). Kaagaz reads them with a vision LLM, runs
+deterministic checks, and gives reviewers an evidence-backed report to confirm or
+dismiss. It never approves, rejects or labels fraud.
 
-## Parsing API (local Ollama, your request)
-- `POST /api/parse` — upload 1..N PDFs → structured JSON per document: claim details,
-  invoice numbers, itemized charges, totals, hospitalization dates, policy validity,
-  coverage limits, exclusions, required documents. Model: `llama3.2:3b` (local, ~2 GB).
-- `POST /api/verify` — parse + deterministic verification + PostgreSQL audit row.
-- `POST /api/review` — human-in-the-loop confirm / dismiss / inconclusive + comment.
-- `GET /api/audits` — audit trail. `POST /api/explain` — explains a quoted clause only.
-
-## VLM vs OCR+LLM (accuracy–speed decision)
-Default = **PyMuPDF text → local text LLM → validated JSON**.
-- Digital PDFs: PyMuPDF is ~100× faster than a VLM and near-perfect → VLM adds
-  seconds/page for zero accuracy gain.
-- Scanned pages (<50 chars/page) → rendered PNG → **local Ollama VLM** (auto-detected:
-  moondream / llava / qwen2-vl / llama3.2-vision / …) for transcription → same text LLM.
-- No VLM installed + scanned input → graceful `regex-fallback` with a warning, never
-  hallucinated text. Pull one only for scans: `ollama pull moondream`.
-
-## Quickstart
-```powershell
-ollama serve                                   # local daemon
-cd backend
-pip install -r requirements.txt
-copy .env.example .env                         # OLLAMA_MODEL=llama3.2:3b
-$env:OLLAMA_HOST='http://127.0.0.1:11434'      # if your env has 0.0.0.0, use 127.0.0.1
-python -m uvicorn app.main:app --port 8002
-cd ..\frontend; npm install; npm run dev       # http://localhost:5173 (proxies /api → :8002)
+```
+React (Vite) ──► FastAPI ──► Postgres queue (claims) ──► worker
+                                                 │
+            PyMuPDF text layer + scanned-page images ──► LLM (OpenRouter) ──► JSON (strict schema)
+                                                 │
+                         verifier.py (pure Python rules) ──► findings ──► reviewer decisions
 ```
 
-## Demo (3 synthetic scenarios, no real PHI)
-`python samples/make_pdfs.py` regenerates the PDFs, or use `samples/*.pdf` directly.
+## Pipeline
+- **Digital pages** use the PDF text layer (exact, free). **Scanned pages** (<50 chars of text)
+  are rendered to JPEG and sent as images in the *same* call — one LLM call per document.
+- The model returns JSON constrained by a strict schema; `pipeline.clean()` then normalises
+  dates to ISO, parses money, and drops totals/charges that the model put on non-invoices.
+- `verifier.py` decides everything: bill arithmetic, duplicate invoices (in the claim and
+  across earlier claims), missing required documents, policy period, coverage limit,
+  exclusions, claim-number/patient consistency, low-confidence reads.
+- Requests to OpenRouter set `provider.data_collection = "deny"` (only providers that don't
+  collect prompt data). Set `LLM_BASE_URL=http://localhost:11434/v1` to use a local Ollama
+  vision model instead.
+
+**Model:** `google/gemini-2.5-flash` is the default (strong at reading bills, ≈1¢ per
+6-document claim). Without OpenRouter credits, use `dots-studio/dots-3-note-preview:free`
+(scored 22/22 on the sample invoices and policy, but slow, ~30 s per document, and capped at ~50 requests/day).
+
+## Data model (`backend/app/schema.sql`, applied on startup)
+`orgs` → `users` (admin | reviewer) → `claims` (job `state` + outcome `status`) →
+`documents` (encrypted PDF, extracted `data` JSONB) → `findings` → `reviews` (append-only
+history). `access_log` records sign-ins, uploads, views, PDF downloads, reviews, deletions.
+Every query is scoped by `org_id`; RLS is enabled so Supabase's public REST API can't read tables.
+
+## Run locally
+```powershell
+# 1. Backend
+cd backend
+python -m venv ..\.venv; ..\.venv\Scripts\pip install -r requirements.txt
+copy .env.example .env      # fill DATABASE_URL, SECRET_KEY, FILE_ENCRYPTION_KEY, OPENROUTER_API_KEY
+..\.venv\Scripts\python -m uvicorn app.main:app --port 8002
+# 2. Frontend
+cd ..\frontend; npm install; npm run dev     # http://localhost:5173 (proxies /api -> :8002)
+```
+Create a workspace at `/#/signup`; add reviewers under Settings → Team.
+The worker runs inside the API by default; for more throughput set `WORKER_ENABLED=false`
+and run `python -m app.worker` (any number of them — the queue uses `SKIP LOCKED`).
+
+## Demo documents (synthetic, no real PHI)
+`python samples/make_pdfs.py` regenerates them.
 
 | Scenario | Upload | Expected |
 |---|---|---|
-| A consistent | `policy_A invoice_A discharge_A prescription_A diagnostic_A claimform_A` | `consistent`: TOTAL_OK + COVERAGE_OK (info). Note: B's files carry CLM-DEMO-B vs A's CLM-DEMO-A claim IDs |
-| B total mismatch | same set but `invoice_B_mismatch` (stated 78000, items sum 73000) | `incomplete`: `action_required TOTAL_MISMATCH` (diff 5000) |
-| C missing docs | `policy_A invoice_A` only | `incomplete`: 4× `action_required MISSING_*` (discharge, prescription, diagnostics, claim form) |
+| A | policy_A, invoice_A, discharge_A, prescription_A, diagnostic_A, claimform_A | consistent |
+| B | A with `invoice_B_mismatch` | incomplete — total mismatch (78,000 vs 73,000) |
+| C | policy_A, invoice_A | incomplete — 4 required documents missing |
+| D | A with `invoice_A_scanned` (image-only) | read via vision; flags "invoice already submitted" if C exists |
 
-Fast check without the LLM: `python backend/tests/test_verifier.py` logic via
-`python -c "import sys;sys.path.insert(0,'backend');from tests.test_verifier import *;..."`.
-The tool never auto-approves/rejects or labels fraud — worst status is
-`incomplete`/`needs_review` for human review.
+## Tests
+`python -m pytest backend/tests` — verifier, extraction cleaning, auth, schema (no DB/LLM needed).
 
-## Safety & limits
-- Server-side keys (`.env`); PDFs validated (magic bytes, 15 MB cap); Pydantic-validated
-  model JSON; low-confidence values flagged; non-invoice charges/totals dropped.
-- Verification is deterministic Python (totals, duplicates, dates, coverage, claim-ID
-  consistency); the LLM only extracts and quotes clauses.
-- Scanned PDFs need a local VLM or they degrade to regex-fallback with a warning.
+## Production notes
+- `COOKIE_SECURE=true` behind HTTPS; set `CORS_ORIGINS` to the real frontend origin.
+- Keep `FILE_ENCRYPTION_KEY` safe — losing it makes stored PDFs unreadable.
+- Rate limits are in-process; move them to Redis/Postgres if you run several API processes.

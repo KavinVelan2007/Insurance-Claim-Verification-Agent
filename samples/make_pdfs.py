@@ -92,5 +92,12 @@ SCEN = {"policy_A.pdf": ("POLICY SCHEDULE", POLICY),
 if __name__ == "__main__":
     for n, (t, lines) in SCEN.items():
         write_pdf(OUT / n, t, lines)
-    print("OK: A=policy_A+invoice_A+discharge_A+prescription_A consistent; "
-          "B=policy_A+invoice_B_mismatch+discharge_A mismatch; C=policy_A+invoice_A missing-docs.")
+    # Image-only copy of invoice_A to exercise the OCR path (needs PyMuPDF from backend/requirements.txt).
+    import pymupdf
+    with pymupdf.open(OUT / "invoice_A.pdf") as src, pymupdf.open() as out:
+        pix = src[0].get_pixmap(dpi=150, colorspace="gray")
+        out.new_page(width=595, height=842).insert_image(pymupdf.Rect(0, 0, 595, 842), pixmap=pix)
+        out.save(OUT / "invoice_A_scanned.pdf", deflate=True)
+    print("wrote invoice_A_scanned.pdf (image only)")
+    print("Scenarios: A = policy_A + invoice_A + discharge_A + prescription_A + diagnostic_A + claimform_A;"
+          " B = A with invoice_B_mismatch; C = policy_A + invoice_A; D = A with invoice_A_scanned (OCR).")

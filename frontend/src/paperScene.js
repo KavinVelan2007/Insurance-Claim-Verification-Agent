@@ -56,7 +56,7 @@ export function createPaperScene(canvas) {
     const m = new Mesh(geo, mat);
     const s = {
       m,
-      x: 0.5 + Math.random() * 10,
+      x: 2.5 + Math.random() * 9,
       y: -2.6 + Math.random() * 5.2,
       z: -4 + Math.random() * 4.5,
       rx: (Math.random() - 0.5) * 0.8, ry: (Math.random() - 0.5) * 1.2, rz: (Math.random() - 0.5) * 0.6,
@@ -78,10 +78,10 @@ export function createPaperScene(canvas) {
   const pos = new Float32Array(pairs.length * 6);
   const lineGeo = new BufferGeometry();
   lineGeo.setAttribute('position', new BufferAttribute(pos, 3));
-  const lineMat = new LineBasicMaterial({ color: RED, transparent: true, opacity: 0.22 });
+  const lineMat = new LineBasicMaterial({ color: RED, transparent: true, opacity: 0.2 });
   scene.add(new LineSegments(lineGeo, lineMat));
 
-  let time = 0, speed = 1, target = 1, last = performance.now(), raf = 0, visible = true;
+  let time = 0, last = performance.now(), raf = 0, visible = true;
   let mx = 0, my = 0;
 
   function place() {
@@ -117,9 +117,7 @@ export function createPaperScene(canvas) {
   function frame(now) {
     const dt = Math.min((now - last) / 1000, 0.05);
     last = now;
-    speed += (target - speed) * 0.04;
-    time += dt * speed;
-    lineMat.opacity = 0.18 + (speed - 1) * 0.12;
+    time += dt;
     place();
     render();
     raf = visible ? requestAnimationFrame(frame) : 0;
@@ -139,7 +137,6 @@ export function createPaperScene(canvas) {
   else { window.addEventListener('pointermove', onMove); raf = requestAnimationFrame(frame); }
 
   return {
-    setBusy(b) { target = b ? 3.2 : 1; },
     dispose() {
       cancelAnimationFrame(raf);
       ro.disconnect(); io.disconnect();

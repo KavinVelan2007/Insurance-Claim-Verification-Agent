@@ -1,61 +1,74 @@
-"""Pydantic schemas — the structured JSON contract for parsing + verification."""
-from typing import List, Optional, Literal, Dict, Any
+"""Pydantic schemas: extraction contract, findings, API inputs."""
+from typing import Annotated, List, Optional, Literal
 from pydantic import BaseModel, Field
 
-DocumentType = Literal[
-    "policy", "invoice", "discharge_summary", "prescription",
-    "diagnostic_report", "claim_form", "other",
-]
-
-FindingSeverity = Literal["info", "warning", "action_required", "policy_review"]
+DocumentType = Literal["policy", "invoice", "discharge_summary", "prescription",
+                       "diagnostic_report", "claim_form", "other"]
+Severity = Literal["info", "warning", "action_required", "policy_review"]
+Decision = Literal["confirmed", "dismissed", "inconclusive"]
+Email = Annotated[str, Field(pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$", max_length=254)]
 
 
 class ItemizedCharge(BaseModel):
-    description: str = ""
-    amount: float = 0.0
+    description: str
+    amount: float
 
 
-class ParsedDocument(BaseModel):
-    filename: str = ""
+class Extraction(BaseModel):
+    """What the LLM must return (sent to Ollama as a JSON schema)."""
+    document_type: DocumentType
+    claim_id: Optional[str]
+    patient_name: Optional[str]
+    hospital_name: Optional[str]
+    invoice_number: Optional[str]
+    invoice_date: Optional[str]
+    itemized_charges: List[ItemizedCharge]
+    total_amount: Optional[float]
+    admission_date: Optional[str]
+    discharge_date: Optional[str]
+    diagnosis: Optional[str]
+    policy_number: Optional[str]
+    policy_valid_from: Optional[str]
+    policy_valid_to: Optional[str]
+    coverage_limit: Optional[float]
+    deductible: Optional[float]
+    exclusions: List[str]
+    required_documents: List[str]
+    policy_clauses: List[str]
+    confidence: float
+
+
+class ParsedDocument(Extraction):
+    """Extraction after cleaning, plus pipeline metadata. Stored as documents.data."""
     document_type: DocumentType = "other"
-    # claim / patient / hospital
     claim_id: Optional[str] = None
     patient_name: Optional[str] = None
     hospital_name: Optional[str] = None
     invoice_number: Optional[str] = None
-    invoice_date: Optional[str] = None  # YYYY-MM-DD when known
+    invoice_date: Optional[str] = None       # always YYYY-MM-DD or None
     itemized_charges: List[ItemizedCharge] = Field(default_factory=list)
     total_amount: Optional[float] = None
-    currency: str = "INR"
     admission_date: Optional[str] = None
     discharge_date: Optional[str] = None
     diagnosis: Optional[str] = None
-    # policy fields (populated mainly for policy docs)
     policy_number: Optional[str] = None
     policy_valid_from: Optional[str] = None
     policy_valid_to: Optional[str] = None
     coverage_limit: Optional[float] = None
-    deductible: Optional[float] = 0.0
+    deductible: Optional[float] = None
     exclusions: List[str] = Field(default_factory=list)
     required_documents: List[str] = Field(default_factory=list)
     policy_clauses: List[str] = Field(default_factory=list)
-    # extraction meta
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
-    extraction_method: str = "text+llm"  # text+llm | vlm+llm | regex-fallback | failed
+    filename: str = ""
+    extraction_method: str = "text"          # text | ocr | text+ocr
     warnings: List[str] = Field(default_factory=list)
-    raw_text_chars: int = 0
-
-
-class ParseResponse(BaseModel):
-    documents: List[ParsedDocument]
-    model_used: str = ""
-    pipeline: str = "pymupdf+ollama-llm"
 
 
 class Finding(BaseModel):
     code: str
     title: str
-    severity: FindingSeverity
+    severity: Severity
     detail: str
     extracted_value: Optional[str] = None
     expected_value: Optional[str] = None
@@ -65,18 +78,30 @@ class Finding(BaseModel):
     action: Optional[str] = None
 
 
-class VerificationReport(BaseModel):
-    claim_id: str
-    status: Literal["consistent", "needs_review", "incomplete"] = "needs_review"
-    findings: List[Finding] = Field(default_factory=list)
-    documents: List[ParsedDocument] = Field(default_factory=list)
-    totals_recalculated: Dict[str, Any] = Field(default_factory=dict)
-    audit_id: Optional[int] = None
+class SignupIn(BaseModel):
+    org_name: str = Field(min_length=2, max_length=120)
+    name: str = Field(min_length=1, max_length=120)
+    email: Email
+    password: str = Field(min_length=10, max_length=200)
 
 
-class ReviewInput(BaseModel):
-    audit_id: int
-    finding_code: str
-    decision: Literal["confirmed", "dismissed", "inconclusive"]
-    comment: str = ""
-    reviewer: str = "reviewer"
+class LoginIn(BaseModel):
+    email: Email
+    password: str = Field(max_length=200)
+
+
+class MemberIn(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    email: Email
+    password: str = Field(min_length=10, max_length=200)
+    role: Literal["admin", "reviewer"] = "reviewer"
+
+
+class PasswordIn(BaseModel):
+    current: str = Field(max_length=200)
+    new: str = Field(min_length=10, max_length=200)
+
+
+class ReviewIn(BaseModel):
+    decision: Decision
+    comment: str = Field(default="", max_length=1000)
