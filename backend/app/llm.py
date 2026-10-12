@@ -3,7 +3,7 @@
 Accuracy/speed decision:
 - OCR+VLM is NOT the default: without tesseract installed and no vision
   model pulled, it would only add latency. Default pipeline is
-  PyMuPDF text -> local text LLM (granite3-moe:3b) -> validated JSON.
+  PyMuPDF text -> local text LLM (llama3.2:3b) -> validated JSON.
 - VLM path activates ONLY when (a) scanned pages exist AND (b) a local
   vision model (moondream/llava/bakllava/qwen2-vl/llama3.2-vision/minicpm-v)
   is found via `ollama list`. Otherwise we return a graceful failure flag.

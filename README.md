@@ -5,7 +5,7 @@
 ## Parsing API (local Ollama, your request)
 - `POST /api/parse` — upload 1..N PDFs → structured JSON per document: claim details,
   invoice numbers, itemized charges, totals, hospitalization dates, policy validity,
-  coverage limits, exclusions, required documents. Model: `granite3-moe:3b` (local, ~2 GB).
+  coverage limits, exclusions, required documents. Model: `llama3.2:3b` (local, ~2 GB).
 - `POST /api/verify` — parse + deterministic verification + PostgreSQL audit row.
 - `POST /api/review` — human-in-the-loop confirm / dismiss / inconclusive + comment.
 - `GET /api/audits` — audit trail. `POST /api/explain` — explains a quoted clause only.
@@ -24,7 +24,7 @@ Default = **PyMuPDF text → local text LLM → validated JSON**.
 ollama serve                                   # local daemon
 cd backend
 pip install -r requirements.txt
-copy .env.example .env                         # OLLAMA_MODEL=granite3-moe:3b
+copy .env.example .env                         # OLLAMA_MODEL=llama3.2:3b
 $env:OLLAMA_HOST='http://127.0.0.1:11434'      # if your env has 0.0.0.0, use 127.0.0.1
 python -m uvicorn app.main:app --port 8002
 cd ..\frontend; npm install; npm run dev       # http://localhost:5173 (proxies /api → :8002)

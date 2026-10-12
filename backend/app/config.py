@@ -17,7 +17,7 @@ def _default_host() -> str:
 class Settings(BaseSettings):
     app_name: str = "ClaimLens AI"
     ollama_host: str = _default_host()
-    ollama_model: str = "granite3-moe:3b"  # local text LLM (fast, low RAM)
+    ollama_model: str = "llama3.2:3b"  # local text LLM (fast, low RAM)
     ollama_vlm_model: str = ""  # e.g. moondream / llava — auto-detected if blank
     ollama_timeout_s: int = 120
     max_upload_mb: int = 15
