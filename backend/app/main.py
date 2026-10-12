@@ -1,7 +1,7 @@
 """ClaimLens AI API — parse (PyMuPDF+VLM/LLM->JSON), verify, review, audit."""
 import json
 import uuid
-from typing import List
+from typing import List, Optional
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
@@ -76,11 +76,12 @@ async def verify_claim(files: List[UploadFile] = File(...), claim_id: str = ""):
                               totals_recalculated=totals, audit_id=aid)
 
 
-def _save_verification(cid: str, status: str, findings_json: str, docs_json: str) -> int:
+def _save_verification(cid: str, status: str, findings_json: str, docs_json: str) -> Optional[int]:
+    # Don't discard a finished report because the DB is down; audit_id=None tells the UI it wasn't saved.
     try:
         return store.save_verification(cid, status, findings_json, docs_json)
-    except Exception as e:
-        raise HTTPException(503, f"Database unavailable (check DATABASE_URL): {e}")
+    except Exception:
+        return None
 
 
 @app.post("/api/review")

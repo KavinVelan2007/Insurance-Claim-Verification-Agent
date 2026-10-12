@@ -30,7 +30,7 @@ def _dsn() -> str:
 
 
 def _connect():
-    return psycopg.connect(_dsn(), row_factory=dict_row)
+    return psycopg.connect(_dsn(), row_factory=dict_row, connect_timeout=5)
 
 
 def init_db() -> None:

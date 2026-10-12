@@ -31,6 +31,13 @@ def test_missing_docs():
     f = verify([pol(), inv(73000)], "T3")
     assert any(x.code.startswith("MISSING") for x in f), f
 
+def test_codes_unique():
+    p = pol()
+    p.required_documents = ["cashless form", "doctor letter"]  # both -> MISSING_DOC
+    f = verify([p, inv(73000)], "T5")
+    codes = [x.code for x in f]
+    assert len(codes) == len(set(codes)), codes
+
 def test_duplicates():
     f = verify([inv(100, (100,), "DUP"), inv(100, (100,), "DUP")], "T4")
     assert any(x.code.startswith("DUPLICATE") for x in f), f

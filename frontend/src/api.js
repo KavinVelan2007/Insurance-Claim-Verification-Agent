@@ -1,8 +1,14 @@
 const BASE = '';
 async function req(path, opts = {}) {
-  const r = await fetch(BASE + path, opts);
+  let r;
+  try { r = await fetch(BASE + path, opts); }
+  catch { throw new Error('Cannot reach the Kaagaz API — is the backend running on :8002?'); }
   const body = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(body.detail || `Request failed (${r.status})`);
+  if (!r.ok) {
+    // FastAPI validation errors (422) return detail as a list of {msg, loc}.
+    const d = Array.isArray(body.detail) ? body.detail.map(x => x.msg).join('; ') : body.detail;
+    throw new Error(d || `Request failed (${r.status})`);
+  }
   return body;
 }
 export async function apiParse(files) {

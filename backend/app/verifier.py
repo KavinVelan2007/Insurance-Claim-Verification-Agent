@@ -163,6 +163,12 @@ def verify(documents, claim_id: str):
                        "Arithmetic, duplicates, dates and coverage checks all pass. "
                        "Still requires human review — never auto-approves.",
                        confidence=0.8))
+    # Codes key the HITL reviews, so they must be unique per report.
+    seen = Counter()
+    for f in out:
+        seen[f.code] += 1
+        if seen[f.code] > 1:
+            f.code = f"{f.code}_{seen[f.code]}"
     return out
 
 
