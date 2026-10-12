@@ -1,0 +1,44 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>
+endobj
+4 0 obj
+<< /Length 1005 >>
+stream
+BT /F1 13 Tf 50 800 Td (POLICY SCHEDULE) Tj ET
+BT /F1 10 Tf 50 757 Td (ACME HEALTH INSURANCE - POLICY SCHEDULE \(SYNTHETIC DEMO\)) Tj ET
+BT /F1 10 Tf 50 739 Td (Policy Number: POL-DEMO-2026-001) Tj ET
+BT /F1 10 Tf 50 721 Td (Policyholder: Demo Patient) Tj ET
+BT /F1 10 Tf 50 703 Td (Policy Valid From: 2026-01-01) Tj ET
+BT /F1 10 Tf 50 685 Td (Policy Valid To: 2026-12-31) Tj ET
+BT /F1 10 Tf 50 667 Td (Coverage Limit \(Sum Insured\): INR 500000) Tj ET
+BT /F1 10 Tf 50 649 Td (Deductible: INR 10000) Tj ET
+BT /F1 10 Tf 50 631 Td (Required Documents: discharge summary, invoice, prescription, diagnostic report, claim form) Tj ET
+BT /F1 10 Tf 50 613 Td (Exclusions: cosmetic surgery; dental treatment unless due to accident; infertility treatment) Tj ET
+BT /F1 10 Tf 50 595 Td (Clause 4.2: Hospitalization claims must include itemized invoice, discharge summary and prescription.) Tj ET
+BT /F1 10 Tf 50 577 Td (Clause 7.1: Claims with treatment dates outside the policy period require renewal proof.) Tj ET
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000001298 00000 n 
+
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+1368
+%%EOF
